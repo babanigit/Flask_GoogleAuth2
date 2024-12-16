@@ -1,3 +1,4 @@
+import io
 from flask import Flask, json, redirect, url_for, session, request, jsonify
 from requests_oauthlib import OAuth2Session
 import os
@@ -5,7 +6,7 @@ import requests
 from flask_cors import CORS
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaIoBaseUpload  # Changed import
 
 
 # Flask app initialization
@@ -82,18 +83,32 @@ def callback():
         TOKEN_URI, client_secret=CLIENT_SECRET, authorization_response=request.url
     )
 
-    # Store token in the session
-    session["oauth_token"] = token
+    # Store token in the session with more explicit keys
+    session['oauth_token'] = {
+        'access_token': token['access_token'],
+        'refresh_token': token.get('refresh_token'),
+        'token_type': token.get('token_type'),
+        'expires_at': token.get('expires_at')
+    }
 
     # Redirect back to React app with access token
     redirect_url = f"http://localhost:5173/?access_token={token['access_token']}"
     return redirect(redirect_url)
 
+
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    # Check if the user is authenticated
-    if "oauth_token" not in session:
-        return jsonify({"error": "Not authenticated"}), 401
+    # Debug print statements
+    print("Session contents:", dict(session))
+    print("Incoming request headers:", request.headers)
+    print("Authorization header:", request.headers.get('Authorization'))
+
+    # Extract token from Authorization header
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({"error": "No authentication token provided"}), 401
+
+    access_token = auth_header.split(' ')[1]
 
     # Get the uploaded file
     if "file" not in request.files:
@@ -105,10 +120,9 @@ def upload_file():
         return jsonify({"error": "No selected file"}), 400
 
     try:
-        # Create Google Drive service
+        # Create Google Drive service directly using the access token
         credentials = Credentials(
-            token=session["oauth_token"]["access_token"],
-            refresh_token=session["oauth_token"].get("refresh_token"),
+            token=access_token,
             token_uri=TOKEN_URI,
             client_id=CLIENT_ID,
             client_secret=CLIENT_SECRET,
@@ -116,10 +130,18 @@ def upload_file():
 
         service = build("drive", "v3", credentials=credentials)
 
+        # Convert FileStorage to in-memory file-like object
+        file_stream = io.BytesIO(file.read())
+        
+        # Use MediaIoBaseUpload instead of MediaFileUpload
+        media = MediaIoBaseUpload(
+            file_stream, 
+            mimetype=file.content_type, 
+            resumable=True
+        )
+
         # Upload file to Google Drive
         file_metadata = {"name": file.filename}
-        media = MediaFileUpload(file, resumable=True)
-
         file_obj = (
             service.files()
             .create(body=file_metadata, media_body=media, fields="id")
@@ -134,8 +156,9 @@ def upload_file():
         )
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        print(f"Upload error: {str(e)}")
+        return jsonify({"error": str(e)}), 500   
+    
 
 @app.route("/logout")
 def logout():

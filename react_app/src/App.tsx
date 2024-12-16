@@ -53,12 +53,11 @@ const App = () => {
       alert("No file selected");
       return;
     }
-
+  
     try {
-      console.log(" from upload file auth token is : ", authToken);
       const formData = new FormData();
       formData.append("file", file);
-
+  
       const response = await axios.post(
         "http://localhost:5000/upload",
         formData,
@@ -66,16 +65,18 @@ const App = () => {
           withCredentials: true,
           headers: {
             "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${authToken}`,
+            "Authorization": `Bearer ${authToken}`,
           },
         }
       );
-
+  
       setUploadMessage(response.data.message || "File uploaded successfully");
       
     } catch (error) {
       if (axios.isAxiosError(error)) {
         console.error("Upload error details:", error.response?.data);
+        console.error("Full error:", error);
+        
         setUploadMessage(
           error.response?.data?.error || "Failed to upload file"
         );
@@ -85,7 +86,6 @@ const App = () => {
       }
     }
   };
-
   return (
     <Router>
       <TokenHandler />
