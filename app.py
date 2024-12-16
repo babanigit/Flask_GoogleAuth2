@@ -122,7 +122,7 @@ def upload_file():
     try:
         # Create Google Drive service directly using the access token
         credentials = Credentials(
-            token=access_token,
+            token=access_token + "",
             token_uri=TOKEN_URI,
             client_id=CLIENT_ID,
             client_secret=CLIENT_SECRET,
